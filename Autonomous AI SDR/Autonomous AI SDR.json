@@ -1,0 +1,1636 @@
+{
+  "name": "Autonomous AI SDR",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 7
+            }
+          ]
+        }
+      },
+      "id": "872bc223-cf15-41f8-8654-3a2a43fde4e7",
+      "name": "Apollo Daily 7am Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apollo.io/api/v1/mixed_people/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": {
+          "per_page": 50,
+          "page": 1,
+          "person_titles": [
+            "CEO",
+            "Founder",
+            "Co-Founder",
+            "VP Sales",
+            "Head of Sales",
+            "Director of Sales"
+          ],
+          "organization_num_employees_ranges": [
+            "11,50",
+            "51,200"
+          ],
+          "person_locations": [
+            "United States",
+            "United Kingdom",
+            "Canada",
+            "Australia"
+          ],
+          "contact_email_status": [
+            "verified"
+          ],
+          "q_organization_keyword_tags": [
+            "saas",
+            "software",
+            "ecommerce",
+            "marketing"
+          ]
+        },
+        "options": {}
+      },
+      "id": "6d743ef0-6b24-4ef4-84d3-82d8ee604de7",
+      "name": "Apollo Pull ICP Leads",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        224,
+        80
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Xm42gXKajHyGe5d9",
+          "name": "Apollo Api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst response = $input.first().json;\nconst people = response.people || response.contacts || [];\nif (!people.length) return [{ json: { error: 'No leads returned from Apollo' } }];\nconst leads = [];\nfor (const person of people) {\n  const email = person.email || person.contact?.email;\n  if (!email || email.includes('*')) continue;\n  leads.push({ json: {\n    firstname: person.first_name || '',\n    lastname: person.last_name || '',\n    email: email,\n    jobtitle: person.title || '',\n    company: person.organization?.name || '',\n    linkedin_url: person.linkedin_url || '',\n    industry: person.organization?.industry || '',\n    company_website: person.organization?.website_url || '',\n  }});\n}\nreturn leads.length > 0 ? leads : [{ json: { error: 'No verified emails found' } }];\n      "
+      },
+      "id": "987e9b8e-2d3a-4291-b85b-b3bcff618d8a",
+      "name": "Parse Apollo Leads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.email }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "leftValue": "={{ $json.error }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9d600075-cc0b-4b1a-a0f2-9618b4408ff7",
+      "name": "Has Valid Email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        672,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "email": "={{ $json.email }}",
+        "additionalFields": {
+          "companyName": "={{ $json.company }}",
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              {
+                "property": "outreach_status",
+                "value": "Not Started"
+              },
+              {
+                "property": "icp_score",
+                "value": "0"
+              },
+              {
+                "property": "sequence_day",
+                "value": "0"
+              },
+              {
+                "property": "personalization_notes",
+                "value": "Pending AI enrichment at 8am"
+              },
+              {
+                "property": "company_news",
+                "value": "Pending AI research at 8am"
+              }
+            ]
+          },
+          "firstName": "={{ $json.firstname }}",
+          "industry": "={{ $json.industry }}",
+          "jobTitle": "={{ $json.jobtitle }}",
+          "lastName": "={{ $json.lastname }}",
+          "linkedinUrl": "={{ $json.linkedin_url }}",
+          "websiteUrl": "={{ $json.company_website }}"
+        },
+        "options": {}
+      },
+      "id": "00780f63-3fb7-4dc2-939d-21e07b8b8c33",
+      "name": "HubSpot Create Apollo Lead",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        896,
+        0
+      ],
+      "credentials": {
+        "hubspotOAuth2Api": {
+          "id": "c3PUbCkjPj8bs29Y",
+          "name": "HubSpot account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst items = $input.all();\nconst successful = items.filter(i => !i.json.error).length;\nreturn [{ json: { total_imported: successful, total_processed: items.length, timestamp: new Date().toISOString() }}];\n      "
+      },
+      "id": "4a578f68-6646-4cf6-b05e-5a87e8377bed",
+      "name": "Count Apollo Leads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "C0BEZ98NALE",
+          "cachedResultName": "all-asad-team"
+        },
+        "text": "={{ \"🚀 *Apollo Auto-Import Complete*\\n✅ New leads: \" + $json.total_imported + \"\\n📊 Total processed: \" + $json.total_processed + \"\\n⏰ AI SDR starts in 1 hour at 8:00 AM\" }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "id": "9c4e25b8-46ef-4479-9297-84f2042c4ab6",
+      "name": "Slack Apollo Import Summary",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        1344,
+        80
+      ],
+      "webhookId": "c3fead46-d870-4c55-abac-1b3d8ba77895",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "NYoh2jIcPXQ3o8r8",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "9c823796-4727-4d2d-a720-e0a3e6abf903",
+      "name": "Daily 8am Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        848
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 50,
+        "additionalFields": {
+          "propertiesCollection": {
+            "propertiesValues": {
+              "properties": [
+                "email",
+                "firstname",
+                "lastname",
+                "company",
+                "jobtitle",
+                "outreach_status",
+                "icp_score",
+                "sequence_day",
+                "last_email_sent_date",
+                "personalization_notes",
+                "company_news"
+              ],
+              "propertyMode": "valueOnly"
+            }
+          }
+        }
+      },
+      "id": "b7e4a63f-2bea-4a86-a5c2-cc4bb0d03325",
+      "name": "Get HubSpot Contacts",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        224,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst today = new Date();\nconst filtered = [];\nfor (const item of $input.all()) {\n  const props = item.json.properties || {};\n  const email = props.email;\n  if (!email) continue;\n  const status = (props.outreach_status || 'Not Started').trim();\n  const icpScore = parseFloat(props.icp_score || '0');\n  if (icpScore > 0 && icpScore < 5) continue;\n  if (['Booked','Closed','Low ICP'].includes(status)) continue;\n  const lastEmailDate = props.last_email_sent_date ? new Date(props.last_email_sent_date) : null;\n  const seqDay = parseInt(props.sequence_day || '0');\n  const daysSinceLast = lastEmailDate ? Math.floor((today - lastEmailDate) / (1000*60*60*24)) : 999;\n  if (!status || status === 'Not Started') {\n    filtered.push({ ...item.json, action: 'send_intro', seqDay: 1 });\n  } else if (status === 'Emailed' && daysSinceLast >= 3 && seqDay === 1) {\n    filtered.push({ ...item.json, action: 'send_followup', seqDay: 3 });\n  } else if (status === 'Followed Up' && daysSinceLast >= 4 && seqDay === 3) {\n    filtered.push({ ...item.json, action: 'send_breakup', seqDay: 7 });\n  }\n}\nreturn filtered.map(f => ({ json: f }));\n      "
+      },
+      "id": "48345644-e2c5-4ac2-ac33-2122578da5fb",
+      "name": "Filter Contacts for Outreach",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        512,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.leadiq.com/graphql",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": {
+          "query": "query SearchPeople($input: SearchPeopleInput!) { searchPeople(input: $input) { items { name { first last } linkedInUrl currentPositions { title companyName } emails { value } } } }",
+          "variables": {
+            "input": {
+              "fullName": "={{ $json.properties.firstname + \" \" + $json.properties.lastname }}",
+              "company": "={{ $json.properties.company }}"
+            }
+          }
+        },
+        "options": {}
+      },
+      "id": "f799b944-e423-4f06-a446-390779b65dfb",
+      "name": "LeadIQ Enrich Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        800,
+        400
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "fLF3A6kgUfMbXHXK",
+          "name": "LeadIQ"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ \n\"Search SerpAPI for recent news about the company first.\\n\\n\" +\n\"1. Score lead 1-10 vs ICP (CEO/Founder/VP Sales, 10-200 SaaS/Ecommerce)\\n\" +\n\"2. Identify #1 pain point\\n3. Write SHORT cold email max 5 sentences.\\n\\n\" +\n\"Name: \" + $json.properties.firstname + \" \" + $json.properties.lastname +\n\"\\nCompany: \" + $json.properties.company + \"\\nTitle: \" + $json.properties.jobtitle +\n\"\\nAction: \" + $json.action +\n\"\\nLinkedIn: \" + ($('LeadIQ Enrich Lead').item.json.data?.searchPeople?.items?.[0]?.linkedInUrl || 'N/A') +\n\"\\n\\nJSON ONLY: {\\\"icp_score\\\":8,\\\"personalization\\\":\\\"bullets\\\",\\\"subject\\\":\\\"...\\\",\\\"email_body\\\":\\\"Hi...\\\",\\\"company_news\\\":\\\"...\\\"}\"\n      }}",
+        "options": {
+          "systemMessage": "Expert AI SDR. Search company news via SerpAPI first. JSON only.",
+          "maxIterations": 5
+        }
+      },
+      "id": "3a21ea6a-55ce-4111-a04e-df6b6c95a11b",
+      "name": "AI SDR Email Writer Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1024,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "model": "nvidia/llama-3.1-nemotron-ultra-253b-v1:free",
+        "options": {
+          "maxTokens": 800,
+          "temperature": 0.7
+        }
+      },
+      "id": "3d0fdb31-1ce1-40df-9d34-869548c87ce3",
+      "name": "Outreach Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        624
+      ],
+      "credentials": {
+        "openRouterApi": {
+          "id": "8Z78QJxMRqKu0h2Z",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "aa0c2564-d83d-49fe-8065-71f702165434",
+      "name": "SerpAPI Google Search",
+      "type": "@n8n/n8n-nodes-langchain.toolSerpApi",
+      "typeVersion": 1,
+      "position": [
+        1168,
+        624
+      ],
+      "credentials": {
+        "serpApi": {
+          "id": "S2gGXvPEy1RC4Hbn",
+          "name": "SerpAPI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "\nconst aiContent = $json.output || '{}';\nlet parsed = {};\ntry { parsed = JSON.parse(aiContent); } catch(e) {\n  const m = aiContent.match(/```json\\n?([\\s\\S]*?)```/);\n  if (m) try { parsed = JSON.parse(m[1]); } catch(e2) {}\n  if (!parsed.email_body) {\n    const jm = aiContent.match(/\\{[\\s\\S]*\\}/);\n    if (jm) try { parsed = JSON.parse(jm[0]); } catch(e3) {}\n  }\n}\nconst contact = $('Filter Contacts for Outreach').item.json;\nreturn { json: {\n  contactId: contact.id || contact.vid,\n  email: contact.properties?.email,\n  firstName: contact.properties?.firstname,\n  company: contact.properties?.company,\n  action: contact.action,\n  seqDay: contact.seqDay,\n  icp_score: parsed.icp_score || 5,\n  personalization: parsed.personalization || '',\n  subject: parsed.subject || 'Quick question about ' + (contact.properties?.company || 'your company'),\n  email_body: parsed.email_body || '',\n  companyNews: parsed.company_news || '',\n}};\n      "
+      },
+      "id": "35bae331-b05a-4199-93d9-7f926ea8efc6",
+      "name": "Parse AI Email Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.icp_score }}",
+              "rightValue": 6,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            },
+            {
+              "leftValue": "={{ $json.email }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "leftValue": "={{ $json.email_body }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "276e54de-f533-45d5-a4b4-7febe6c329a0",
+      "name": "ICP Score 6+?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1728,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.email_body }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "c6fd90fb-0037-4620-9197-73fc575f3164",
+      "name": "Gmail Send Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1952,
+        304
+      ],
+      "webhookId": "e48e437a-b9d9-4c19-8bda-96020fed08c7",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "RsFTfoU4qE9LpBZa",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "email": "={{ $json.email }}",
+        "additionalFields": {
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              {
+                "property": "outreach_status",
+                "value": "={{ $json.action === 'send_intro' ? 'Emailed' : $json.action === 'send_followup' ? 'Followed Up' : 'Closed' }}"
+              },
+              {
+                "property": "icp_score",
+                "value": "={{ String($json.icp_score) }}"
+              },
+              {
+                "property": "sequence_day",
+                "value": "={{ String($json.seqDay) }}"
+              },
+              {
+                "property": "last_email_sent_date",
+                "value": "={{ new Date().toISOString().split('T')[0] }}"
+              },
+              {
+                "property": "personalization_notes",
+                "value": "={{ $json.personalization }}"
+              },
+              {
+                "property": "company_news",
+                "value": "={{ $json.companyNews }}"
+              }
+            ]
+          }
+        },
+        "options": {}
+      },
+      "id": "33327bec-f87f-461a-b22f-4541275f0e68",
+      "name": "HubSpot Update Contact",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        2176,
+        304
+      ],
+      "credentials": {
+        "hubspotOAuth2Api": {
+          "id": "c3PUbCkjPj8bs29Y",
+          "name": "HubSpot account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "deal",
+        "stage": "appointmentscheduled",
+        "additionalFields": {
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              {
+                "property": "sdr_deal_source",
+                "value": "={{ $json.company + ' via Apollo.io' }}"
+              },
+              {
+                "property": "meeting_booked_date"
+              }
+            ]
+          },
+          "dealName": "={{ $json.company + ' — AI SDR Lead' }}",
+          "pipeline": "default"
+        }
+      },
+      "id": "c1a3edcd-e15e-493e-a181-e894319db23b",
+      "name": "HubSpot Create Deal",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        2400,
+        304
+      ],
+      "credentials": {
+        "hubspotOAuth2Api": {
+          "id": "c3PUbCkjPj8bs29Y",
+          "name": "HubSpot account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "C0BEZ98NALE",
+          "cachedResultName": "all-asad-team"
+        },
+        "text": "={{ \"📊 *AI SDR Outreach*\\n✉️ Sent to: \" + $json.email + \"\\n🏢 \" + $json.company + \"\\n📋 \" + $json.action + \"\\n🎯 ICP: \" + $json.icp_score }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": true
+        }
+      },
+      "id": "ebb2d9f2-f1e7-422c-899f-8d52b21d53e6",
+      "name": "Slack Daily Summary",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        2624,
+        304
+      ],
+      "webhookId": "3f451fef-4bd5-4a6f-82a2-f83f7c1356b7",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "NYoh2jIcPXQ3o8r8",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "email": "={{ $json.email }}",
+        "additionalFields": {
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              {
+                "property": "outreach_status",
+                "value": "Closed"
+              },
+              {
+                "property": "icp_score",
+                "value": "={{ String($json.icp_score) }}"
+              },
+              {
+                "property": "personalization_notes",
+                "value": "Low ICP — not contacted"
+              }
+            ]
+          }
+        },
+        "options": {}
+      },
+      "id": "ecfeb53f-73ed-4cae-b6ff-ac32d8f932c8",
+      "name": "HubSpot Mark Low ICP",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        1952,
+        496
+      ],
+      "credentials": {
+        "hubspotOAuth2Api": {
+          "id": "c3PUbCkjPj8bs29Y",
+          "name": "HubSpot account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 20,
+        "filters": {
+          "q": "in:inbox -from:me",
+          "readStatus": "unread"
+        }
+      },
+      "id": "8bf0f016-0272-4a15-9a8b-1ec074f7370a",
+      "name": "Gmail Check Replies",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        224,
+        1184
+      ],
+      "webhookId": "9efe2f4d-9e34-4407-9af9-d51057f381b3",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "RsFTfoU4qE9LpBZa",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ \n\"Classify this email reply into exactly one category.\\n\\n\" +\n\"Subject: \" + $json.subject + \"\\nBody: \" + ($json.snippet || \"\") +\n\"\\n\\nCategories:\\n\" +\n\"INTERESTED = wants to learn more or book a call\\n\" +\n\"NOT_INTERESTED = explicitly declining\\n\" +\n\"QUESTION = asking a specific question\\n\" +\n\"OOO = out of office auto-reply\\n\\n\" +\n\"JSON ONLY: {\\\"classification\\\":\\\"INTERESTED\\\"}\"\n      }}",
+        "options": {
+          "systemMessage": "You are a classifier. Output ONE JSON object with classification only. Nothing else.",
+          "maxIterations": 2
+        }
+      },
+      "id": "bc40c890-cf37-403f-859d-4b1723a6f29a",
+      "name": "Reply Classifier Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        448,
+        1184
+      ]
+    },
+    {
+      "parameters": {
+        "model": "nvidia/llama-3.1-nemotron-ultra-253b-v1:free",
+        "options": {
+          "maxTokens": 50,
+          "temperature": 0.1
+        }
+      },
+      "id": "6d9e442c-0481-4c26-99d1-b1956fce4107",
+      "name": "Classifier Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        528,
+        1408
+      ],
+      "credentials": {
+        "openRouterApi": {
+          "id": "8Z78QJxMRqKu0h2Z",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "\nconst aiContent = $json.output || '{}';\nlet parsed = {};\ntry { parsed = JSON.parse(aiContent); } catch(e) {\n  const jm = aiContent.match(/\\{[\\s\\S]*?\\}/);\n  if (jm) try { parsed = JSON.parse(jm[0]); } catch(e2) {}\n}\nreturn { json: {\n  classification: parsed.classification || 'UNKNOWN',\n  originalSubject: $('Gmail Check Replies').item.json.subject || '',\n  fromEmail: $('Gmail Check Replies').item.json.from || '',\n  snippet: $('Gmail Check Replies').item.json.snippet || '',\n}};\n      "
+      },
+      "id": "be648e8e-fb9e-4a83-939c-d6dd27d24e76",
+      "name": "Parse Classification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        1184
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.classification }}",
+                    "rightValue": "INTERESTED",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Interested"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.classification }}",
+                    "rightValue": "NOT_INTERESTED",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Not Interested"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.classification }}",
+                    "rightValue": "QUESTION",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Question"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.classification }}",
+                    "rightValue": "OOO",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "OOO"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a3fd4914-3032-46f6-8171-49448ca4bcd0",
+      "name": "Route by Reply Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1088,
+        1152
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ \n\"This lead is INTERESTED and replied to our cold email.\\n\\n\" +\n\"Their reply:\\nSubject: \" + $json.originalSubject + \"\\nMessage: \" + $json.snippet + \"\\n\\n\" +\n\"Write a warm, concise reply (3-4 sentences) that:\\n\" +\n\"1. Thanks them for replying\\n\" +\n\"2. Confirms their interest\\n\" +\n\"3. Proposes a 15-min discovery call\\n\" +\n\"4. Mentions a Google Meet link will be sent\\n\\n\" +\n\"JSON ONLY: {\\\"reply_body\\\":\\\"Hi [Name],\\\\n\\\\n...\\\\n\\\\nBest,\\\\nAlex\\\"}\"\n      }}",
+        "options": {
+          "systemMessage": "You write warm meeting booking replies for interested prospects. JSON only.",
+          "maxIterations": 2
+        }
+      },
+      "id": "3d8b98ad-7ac3-4b60-83be-1d20da07fe0a",
+      "name": "Interested — Meeting Booking Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1376,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "model": "nvidia/llama-3.1-nemotron-ultra-253b-v1:free",
+        "options": {
+          "maxTokens": 400,
+          "temperature": 0.6
+        }
+      },
+      "id": "37af6015-e511-4469-b812-63f035d13c2c",
+      "name": "Interested Reply Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        1456,
+        864
+      ],
+      "credentials": {
+        "openRouterApi": {
+          "id": "8Z78QJxMRqKu0h2Z",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "\nconst aiContent = $json.output || '{}';\nlet parsed = {};\ntry { parsed = JSON.parse(aiContent); } catch(e) {\n  const jm = aiContent.match(/\\{[\\s\\S]*\\}/);\n  if (jm) try { parsed = JSON.parse(jm[0]); } catch(e2) {}\n}\nreturn { json: {\n  reply_body: parsed.reply_body || 'Hi,\\n\\nThanks for your reply! I would love to schedule a quick 15-min call. I will send over a Google Meet link shortly.\\n\\nBest,\\nAlex',\n  fromEmail: $('Parse Classification').item.json.fromEmail,\n  originalSubject: $('Parse Classification').item.json.originalSubject,\n}};\n      "
+      },
+      "id": "b35cf78d-9dd0-4333-b9ac-c681162c3820",
+      "name": "Parse Interested Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1728,
+        736
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.fromEmail }}",
+        "subject": "={{ \"Re: \" + $json.originalSubject }}",
+        "emailType": "text",
+        "message": "={{ $json.reply_body }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "0b408140-6d6f-4a66-8ba4-4d35a34a796b",
+      "name": "Gmail Send Interested Reply",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1952,
+        736
+      ],
+      "webhookId": "e50c8303-7fcb-447d-acb8-bc45e4f2017e",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "RsFTfoU4qE9LpBZa",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "family06966008392122907400@group.calendar.google.com",
+          "mode": "list",
+          "cachedResultName": "Family"
+        },
+        "start": "={{ DateTime.now().set({ minute: Math.ceil(DateTime.now().minute / 30) * 30 === 60 ? 0 : Math.ceil(DateTime.now().minute / 30) * 30, second: 0, millisecond: 0 }).plus({ hours: Math.ceil(DateTime.now().minute / 30) * 30 === 60 ? 1 : 0 }).toISO() }}",
+        "end": "={{ DateTime.now().set({ minute: Math.ceil(DateTime.now().minute / 30) * 30 === 60 ? 0 : Math.ceil(DateTime.now().minute / 30) * 30, second: 0, millisecond: 0 }).plus({ hours: Math.ceil(DateTime.now().minute / 30) * 30 === 60 ? 1 : 0, minutes: 30 }).toISO() }}",
+        "additionalFields": {
+          "conferenceDataUi": {
+            "conferenceDataValues": {
+              "conferenceSolution": "hangoutsMeet"
+            }
+          },
+          "description": "Booked automatically by AI SDR — lead expressed interest",
+          "sendUpdates": "all",
+          "summary": "={{ 'Discovery Call — ' + $json.fromEmail }}"
+        }
+      },
+      "id": "d08f8d02-51e3-447d-90e1-ecf80675b037",
+      "name": "Google Calendar Book Meeting",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        2176,
+        736
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "fHnmRdGa5mwlAcuw",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "email": "={{ $json.fromEmail }}",
+        "additionalFields": {
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              {
+                "property": "outreach_status",
+                "value": "Booked"
+              },
+              {
+                "property": "reply_classification",
+                "value": "Interested"
+              },
+              {
+                "property": "last_email_sent_date",
+                "value": "={{ new Date().toISOString().split('T')[0] }}"
+              }
+            ]
+          },
+          "lifeCycleStage": "salesqualifiedlead"
+        },
+        "options": {}
+      },
+      "id": "ebf2ec1e-3fe3-464d-a888-4693090890b4",
+      "name": "HubSpot Mark Meeting Booked",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        2400,
+        736
+      ],
+      "credentials": {
+        "hubspotOAuth2Api": {
+          "id": "c3PUbCkjPj8bs29Y",
+          "name": "HubSpot account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "C0BEZ98NALE",
+          "cachedResultName": "all-asad-team"
+        },
+        "text": "={{ \"🎯 *Meeting Booked!*\\n👤 \" + $json.fromEmail + \"\\n📅 Today — next 30-min slot\\n🔗 Google Meet auto-generated\\n✅ HubSpot → Sales Qualified Lead\" }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "id": "481c0b44-b981-4df2-acdc-40911d615d82",
+      "name": "Slack Meeting Booked Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        2624,
+        736
+      ],
+      "webhookId": "47d882e0-4c97-4bed-a952-7015a8d48dc8",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "NYoh2jIcPXQ3o8r8",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "email": "={{ $json.fromEmail }}",
+        "additionalFields": {
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              {
+                "property": "outreach_status",
+                "value": "Closed"
+              },
+              {
+                "property": "reply_classification",
+                "value": "Not Interested"
+              },
+              {
+                "property": "last_email_sent_date",
+                "value": "={{ new Date().toISOString().split('T')[0] }}"
+              }
+            ]
+          }
+        },
+        "options": {}
+      },
+      "id": "c9f2ef73-22c9-491e-ab16-9ab778b4f688",
+      "name": "HubSpot Mark Not Interested",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        1440,
+        1040
+      ],
+      "credentials": {
+        "hubspotOAuth2Api": {
+          "id": "c3PUbCkjPj8bs29Y",
+          "name": "HubSpot account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ \n\"A prospect asked a question in reply to our cold email.\\n\\n\" +\n\"Their question:\\nSubject: \" + $json.originalSubject + \"\\nMessage: \" + $json.snippet + \"\\n\\n\" +\n\"You are an AI SDR for an automation agency that builds AI workflows.\\n\" +\n\"Write a helpful, concise answer (3-5 sentences) that:\\n\" +\n\"1. Directly answers their question\\n\" +\n\"2. Briefly shows value of our service\\n\" +\n\"3. Ends with a soft CTA to book a quick call\\n\\n\" +\n\"JSON ONLY: {\\\"reply_body\\\":\\\"Hi [Name],\\\\n\\\\n...\\\\n\\\\nBest,\\\\nAlex\\\"}\"\n      }}",
+        "options": {
+          "systemMessage": "You answer prospect questions for an AI automation agency. Be helpful and concise. JSON only.",
+          "maxIterations": 2
+        }
+      },
+      "id": "f8bbbbb0-da29-4fff-a726-ddb62e5fa98c",
+      "name": "Question — Answer Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1376,
+        1232
+      ]
+    },
+    {
+      "parameters": {
+        "model": "nvidia/llama-3.1-nemotron-ultra-253b-v1:free",
+        "options": {
+          "maxTokens": 500,
+          "temperature": 0.5
+        }
+      },
+      "id": "250fc19d-28ac-4d11-bd74-a166145ebcc0",
+      "name": "Question Answer Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        1456,
+        1456
+      ],
+      "credentials": {
+        "openRouterApi": {
+          "id": "8Z78QJxMRqKu0h2Z",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "\nconst aiContent = $json.output || '{}';\nlet parsed = {};\ntry { parsed = JSON.parse(aiContent); } catch(e) {\n  const jm = aiContent.match(/\\{[\\s\\S]*\\}/);\n  if (jm) try { parsed = JSON.parse(jm[0]); } catch(e2) {}\n}\nreturn { json: {\n  reply_body: parsed.reply_body || 'Hi,\\n\\nGreat question! I would be happy to explain in a quick call.\\n\\nBest,\\nAlex',\n  fromEmail: $('Parse Classification').item.json.fromEmail,\n  originalSubject: $('Parse Classification').item.json.originalSubject,\n}};\n      "
+      },
+      "id": "db8aa7c4-f88a-40d3-97fc-c19f3b2d3bf9",
+      "name": "Parse Question Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1728,
+        1328
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.fromEmail }}",
+        "subject": "={{ \"Re: \" + $json.originalSubject }}",
+        "emailType": "text",
+        "message": "={{ $json.reply_body }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "3c1844a6-d589-49d2-88d8-907b28026ad1",
+      "name": "Gmail Send Question Answer",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1952,
+        1328
+      ],
+      "webhookId": "2192c0c9-062c-414f-8885-d533716d2d93",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "RsFTfoU4qE9LpBZa",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "email": "={{ $json.fromEmail }}",
+        "additionalFields": {
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              {
+                "property": "outreach_status",
+                "value": "Replied"
+              },
+              {
+                "property": "reply_classification",
+                "value": "Question"
+              },
+              {
+                "property": "last_email_sent_date",
+                "value": "={{ new Date().toISOString().split('T')[0] }}"
+              }
+            ]
+          }
+        },
+        "options": {}
+      },
+      "id": "52145133-2094-4031-9a3e-9bdc145789cd",
+      "name": "HubSpot Mark Question Replied",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        2176,
+        1328
+      ],
+      "credentials": {
+        "hubspotOAuth2Api": {
+          "id": "c3PUbCkjPj8bs29Y",
+          "name": "HubSpot account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "email": "={{ $json.fromEmail }}",
+        "additionalFields": {
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              {
+                "property": "outreach_status",
+                "value": "Followed Up"
+              },
+              {
+                "property": "reply_classification",
+                "value": "OOO"
+              },
+              {
+                "property": "sequence_day",
+                "value": "1"
+              },
+              {
+                "property": "last_email_sent_date",
+                "value": "={{ new Date().toISOString().split('T')[0] }}"
+              }
+            ]
+          }
+        },
+        "options": {}
+      },
+      "id": "8d1f672e-cab2-40e4-a329-a2643e005503",
+      "name": "HubSpot Mark OOO — Reset Sequence",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        1440,
+        1632
+      ],
+      "credentials": {
+        "hubspotOAuth2Api": {
+          "id": "c3PUbCkjPj8bs29Y",
+          "name": "HubSpot account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Apollo Daily 7am Trigger": {
+      "main": [
+        [
+          {
+            "node": "Apollo Pull ICP Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apollo Pull ICP Leads": {
+      "main": [
+        [
+          {
+            "node": "Parse Apollo Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Apollo Leads": {
+      "main": [
+        [
+          {
+            "node": "Has Valid Email?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Valid Email?": {
+      "main": [
+        [
+          {
+            "node": "HubSpot Create Apollo Lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Count Apollo Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot Create Apollo Lead": {
+      "main": [
+        [
+          {
+            "node": "Count Apollo Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Count Apollo Leads": {
+      "main": [
+        [
+          {
+            "node": "Slack Apollo Import Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily 8am Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get HubSpot Contacts",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Gmail Check Replies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get HubSpot Contacts": {
+      "main": [
+        [
+          {
+            "node": "Filter Contacts for Outreach",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Contacts for Outreach": {
+      "main": [
+        [
+          {
+            "node": "LeadIQ Enrich Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LeadIQ Enrich Lead": {
+      "main": [
+        [
+          {
+            "node": "AI SDR Email Writer Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI SDR Email Writer Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Email Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Outreach Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI SDR Email Writer Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SerpAPI Google Search": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI SDR Email Writer Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Email Response": {
+      "main": [
+        [
+          {
+            "node": "ICP Score 6+?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ICP Score 6+?": {
+      "main": [
+        [
+          {
+            "node": "Gmail Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HubSpot Mark Low ICP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Send Email": {
+      "main": [
+        [
+          {
+            "node": "HubSpot Update Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot Update Contact": {
+      "main": [
+        [
+          {
+            "node": "HubSpot Create Deal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot Create Deal": {
+      "main": [
+        [
+          {
+            "node": "Slack Daily Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Check Replies": {
+      "main": [
+        [
+          {
+            "node": "Reply Classifier Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reply Classifier Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Classification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classifier Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Reply Classifier Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Classification": {
+      "main": [
+        [
+          {
+            "node": "Route by Reply Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Reply Type": {
+      "main": [
+        [
+          {
+            "node": "Interested — Meeting Booking Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HubSpot Mark Not Interested",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Question — Answer Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HubSpot Mark OOO — Reset Sequence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Interested — Meeting Booking Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Interested Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Interested Reply Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Interested — Meeting Booking Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Interested Reply": {
+      "main": [
+        [
+          {
+            "node": "Gmail Send Interested Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Send Interested Reply": {
+      "main": [
+        [
+          {
+            "node": "Google Calendar Book Meeting",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Calendar Book Meeting": {
+      "main": [
+        [
+          {
+            "node": "HubSpot Mark Meeting Booked",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot Mark Meeting Booked": {
+      "main": [
+        [
+          {
+            "node": "Slack Meeting Booked Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Question — Answer Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Question Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Question Answer Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Question — Answer Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Question Reply": {
+      "main": [
+        [
+          {
+            "node": "Gmail Send Question Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Send Question Answer": {
+      "main": [
+        [
+          {
+            "node": "HubSpot Mark Question Replied",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "de8007a6-160a-4b90-9074-92b6b92a61d1",
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp",
+    "instanceId": "1a7b863aba4d8f0c8b5ed068b69adb80568b6971f9a808e93f4fa72b2d3609dc"
+  },
+  "nodeGroups": [],
+  "id": "h53Qug8eRipdJ2KD",
+  "tags": []
+}
