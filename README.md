@@ -1,4 +1,4 @@
-# Autonomous AI SDR
+# Autonomous AI SDR 
 
 An autonomous AI-powered sales development workflow built in n8n that continuously sources ICP leads, enriches them with company context, scores them against the ideal customer profile, sends personalized cold emails, and handles replies automatically.
 
